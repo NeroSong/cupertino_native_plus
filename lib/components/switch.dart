@@ -80,6 +80,7 @@ class CNSwitch extends StatefulWidget {
 }
 
 class _CNSwitchState extends State<CNSwitch> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
 
   bool? _lastValue;
@@ -170,6 +171,7 @@ class _CNSwitchState extends State<CNSwitch> {
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onPlatformViewCreated,

@@ -188,6 +188,7 @@ class CNPopupMenuButton extends StatefulWidget {
 }
 
 class _CNPopupMenuButtonState extends State<CNPopupMenuButton> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
   bool? _lastIsDark;
   int? _lastTint;
@@ -531,39 +532,15 @@ class _CNPopupMenuButtonState extends State<CNPopupMenuButton> {
       if (capturedLabelStyle != null) 'labelStyle': capturedLabelStyle,
     };
 
-    // Create a comprehensive key that includes all parameters affecting platform view creation
-    final buttonIconKey =
-        '${widget.buttonLabel}_${widget.buttonIcon?.name}_${widget.buttonImageAsset?.assetPath}_${widget.buttonImageAsset?.imageData?.length ?? 0}_${widget.buttonCustomIcon?.hashCode ?? 0}';
-    final itemsKey = widget.items
-        .map((e) {
-          if (e is CNPopupMenuItem) {
-            return '${e.label}_${e.icon?.name}_${e.imageAsset?.assetPath}_${e.imageAsset?.imageData?.length ?? 0}_${e.customIcon?.hashCode ?? 0}';
-          }
-          return 'divider';
-        })
-        .join('|');
-    final viewKey = ValueKey(
-      'popupMenu_'
-      '$buttonIconKey|'
-      '$itemsKey|'
-      '${widget.buttonStyle.name}_'
-      '${widget.height}_'
-      '${widget.width}_'
-      '${widget.tint?.toARGB32()}_'
-      '$_isDark',
-    );
-
-    final platformView = KeyedSubtree(
-      key: viewKey,
-      child: buildCupertinoPlatformView(
-        context,
-        viewType: viewType,
-        creationParams: creationParams,
-        onPlatformViewCreated: _onCreated,
-        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-          Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
-        },
-      ),
+    final platformView = buildCupertinoPlatformView(
+      context,
+      key: _viewKey,
+      viewType: viewType,
+      creationParams: creationParams,
+      onPlatformViewCreated: _onCreated,
+      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+        Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
+      },
     );
 
     return LayoutBuilder(

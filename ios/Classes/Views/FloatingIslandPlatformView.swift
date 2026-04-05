@@ -133,6 +133,10 @@ class FloatingIslandPlatformView: NSObject, FlutterPlatformView {
         }
     }
 
+    deinit {
+        channel.setMethodCallHandler(nil)
+    }
+
     func view() -> UIView {
         return container
     }

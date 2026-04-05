@@ -1,3 +1,25 @@
+## 0.0.8
+
+### Features
+
+- **`splitRightAsButton`**: New `CNTabBar` property that makes right-side split items act as plain buttons instead of selectable tabs. When enabled, tapping right items fires `onTap` without changing the visual selection — selection is controlled solely by `currentIndex`. Useful for action buttons like settings or compose that shouldn't participate in tab selection.
+
+### Bug fixes
+
+- **Split tab bar default selection**: Fixed an issue where the rightmost item appeared visually selected alongside the current tab when using `split: true` with `rightCount: 1`. The root cause was UITabBar resetting `selectedItem` during item re-assignment for label rendering, with the final layout pass missing selection restoration.
+- **Non-split tab bar selection after layout**: Fixed the same item re-assignment selection loss in non-split tab bar mode.
+- **PlatformException on iOS hot restart**: Added `PlatformViewGuard` that delays platform-view creation by 500 ms on startup, preventing `PlatformException(recreating_view)` crashes when the Flutter engine hasn't fully purged stale view registrations from a previous Dart isolate. All native components (`CNIconView`, `LiquidGlassContainer`, `CNTabBar`) now show Flutter fallbacks during this brief window.
+- **iOS platform view cleanup**: Added `deinit` to all platform views (`CupertinoTabBarPlatformView`, `CupertinoTabBarSearchPlatformView`, `LiquidGlassContainerView`, `LiquidTextPlatformView`, `FloatingIslandPlatformView`, `CupertinoSearchBarPlatformView`) to properly clear method channel handlers and remove views from the hierarchy on deallocation.
+
+### Performance
+
+- **Stable platform view keys**: Added `UniqueKey` to all components (`CNButton`, `CNIconView`, `CNSlider`, `CNSwitch`, `CNSegmentedControl`, `CNPopupMenuButton`, `CNGlassButtonGroup`, `CNFloatingIsland`, `CNSearchBar`, `CNSearchScaffold`) to prevent Flutter from destroying and recreating native views on parent rebuilds. Previously, any parent `setState` could trigger full native view recreation causing incomplete rendering.
+- **Cached FutureBuilder futures**: `CNGlassButtonGroup` and `CNIconView` now cache their async creation futures and only rebuild them when source data actually changes, preventing platform view flicker on rebuilds.
+- **SwiftUI ObservableObject pattern**: `LiquidGlassContainer` and `CNLiquidText` iOS views now use `@ObservedObject` view models instead of replacing `hostingController.rootView` on every config update. This lets SwiftUI diff and update only changed properties, preserving animations and avoiding full view tree recreation.
+- **Lightweight `splitRightAsButton` sync**: Toggling `splitRightAsButton` now uses a dedicated `setSplitRightAsButton` method channel call instead of triggering a full `setLayout` rebuild that destroys and recreates all tab bar instances.
+
+---
+
 ## 0.0.7
 
 **cupertino_native_plus** — native Liquid Glass and Cupertino-style controls for iOS and macOS via platform views. This release ships the current public API, unified icon handling, and documentation. See [MIGRATION.md](MIGRATION.md) for breaking changes.

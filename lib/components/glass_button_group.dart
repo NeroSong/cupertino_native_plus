@@ -105,6 +105,7 @@ class CNGlassButtonGroup extends StatefulWidget {
 }
 
 class _CNGlassButtonGroupState extends State<CNGlassButtonGroup> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
   List<_ButtonSnapshot>? _lastButtonSnapshots;
   Axis? _lastAxis;
@@ -112,14 +113,36 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup> {
   double? _lastSpacingForGlass;
   bool? _lastIsDark;
 
+  /// Cached future for FutureBuilder – rebuilt only when buttons change.
+  Future<List<Map<String, dynamic>>>? _creationParamsFuture;
+
   /// Whether we're using widget mode (backward compatibility).
   bool get _usingWidgets => widget._buttonWidgets != null;
 
   bool get _isDark => ThemeHelper.isDark(context);
 
+  /// (Re)builds and caches the creation-params future.
+  void _rebuildCreationParamsFuture(BuildContext context) {
+    _creationParamsFuture = _usingWidgets
+        ? Future.wait(
+            widget._buttonWidgets!.map(
+              (button) => _buttonWidgetToMapAsync(button, context),
+            ),
+          )
+        : Future.wait(
+            widget.buttons.map(
+              (button) => _buttonDataToMapAsync(button, context),
+            ),
+          );
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Build the future on first mount only (initState has no context).
+    if (_creationParamsFuture == null) {
+      _rebuildCreationParamsFuture(context);
+    }
     _syncBrightnessIfNeeded();
   }
 
@@ -127,6 +150,30 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup> {
   void didUpdateWidget(covariant CNGlassButtonGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncBrightnessIfNeeded();
+
+    // Invalidate the cached future only when the button list actually changed.
+    final currentSnapshots = _usingWidgets
+        ? widget._buttonWidgets!
+              .map((b) => _ButtonSnapshot.fromButtonWidget(b))
+              .toList()
+        : widget.buttons.map((b) => _ButtonSnapshot.fromButtonData(b)).toList();
+
+    final previousSnapshots = _usingWidgets
+        ? oldWidget._buttonWidgets!
+              .map((b) => _ButtonSnapshot.fromButtonWidget(b))
+              .toList()
+        : oldWidget.buttons
+              .map((b) => _ButtonSnapshot.fromButtonData(b))
+              .toList();
+
+    final buttonsChanged =
+        previousSnapshots.length != currentSnapshots.length ||
+        !_snapshotsEqual(previousSnapshots, currentSnapshots);
+
+    if (buttonsChanged) {
+      _rebuildCreationParamsFuture(context);
+    }
+
     _syncButtonsToNativeIfNeeded();
   }
 
@@ -161,17 +208,7 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup> {
     const viewType = ViewTypes.cupertinoNativeGlassButtonGroup;
 
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _usingWidgets
-          ? Future.wait(
-              widget._buttonWidgets!.map(
-                (button) => _buttonWidgetToMapAsync(button, context),
-              ),
-            )
-          : Future.wait(
-              widget.buttons.map(
-                (button) => _buttonDataToMapAsync(button, context),
-              ),
-            ),
+      future: _creationParamsFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const SizedBox.shrink();
@@ -187,6 +224,7 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup> {
 
         final platformView = buildCupertinoPlatformView(
           context,
+          key: _viewKey,
           viewType: viewType,
           creationParams: creationParams,
           onPlatformViewCreated: _onCreated,

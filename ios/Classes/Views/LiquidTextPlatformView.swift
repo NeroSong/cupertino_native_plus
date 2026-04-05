@@ -74,44 +74,83 @@ struct LiquidTextConfig {
   }
 }
 
+// MARK: - ViewModel
+
+@available(iOS 26.0, *)
+final class LiquidTextViewModel: ObservableObject {
+  @Published var text: String
+  @Published var fontSize: CGFloat
+  @Published var fontWeight: Font.Weight
+  @Published var textColor: Color?
+  @Published var shape: String
+  @Published var cornerRadius: CGFloat?
+  @Published var tint: Color?
+  @Published var interactive: Bool
+  @Published var padding: EdgeInsets
+
+  init(config: LiquidTextConfig) {
+    self.text = config.text
+    self.fontSize = config.fontSize
+    self.fontWeight = config.fontWeight
+    self.textColor = config.textColor
+    self.shape = config.shape
+    self.cornerRadius = config.cornerRadius
+    self.tint = config.tint
+    self.interactive = config.interactive
+    self.padding = config.padding
+  }
+
+  func apply(_ config: LiquidTextConfig) {
+    text = config.text
+    fontSize = config.fontSize
+    fontWeight = config.fontWeight
+    textColor = config.textColor
+    shape = config.shape
+    cornerRadius = config.cornerRadius
+    tint = config.tint
+    interactive = config.interactive
+    padding = config.padding
+  }
+}
+
 // MARK: - SwiftUI View
 
 @available(iOS 26.0, *)
 struct LiquidTextSwiftUI: View {
-  let config: LiquidTextConfig
+  @ObservedObject var viewModel: LiquidTextViewModel
 
   var body: some View {
     let s = glassShape
     // Only override foreground when a color is explicitly set.
     // Without this, the glass effect applies natural vibrant text treatment.
     styledText
-      .padding(config.padding)
+      .padding(viewModel.padding)
       .glassEffect(glassEffect, in: s)
       .animation(.easeInOut(duration: 0.25), value: animState)
   }
 
   @ViewBuilder
   private var styledText: some View {
-    if let color = config.textColor {
-      Text(config.text)
-        .font(.system(size: config.fontSize, weight: config.fontWeight))
+    if let color = viewModel.textColor {
+      Text(viewModel.text)
+        .font(.system(size: viewModel.fontSize, weight: viewModel.fontWeight))
         .foregroundStyle(color)
     } else {
-      Text(config.text)
-        .font(.system(size: config.fontSize, weight: config.fontWeight))
+      Text(viewModel.text)
+        .font(.system(size: viewModel.fontSize, weight: viewModel.fontWeight))
     }
   }
 
   private var glassEffect: Glass {
     var glass = Glass.regular
-    if let tint = config.tint { glass = glass.tint(tint) }
-    if config.interactive { glass = glass.interactive() }
+    if let tint = viewModel.tint { glass = glass.tint(tint) }
+    if viewModel.interactive { glass = glass.interactive() }
     return glass
   }
 
   private var glassShape: AnyShape {
-    switch config.shape {
-    case "rect":   return AnyShape(RoundedRectangle(cornerRadius: config.cornerRadius ?? 0))
+    switch viewModel.shape {
+    case "rect":   return AnyShape(RoundedRectangle(cornerRadius: viewModel.cornerRadius ?? 0))
     case "circle": return AnyShape(Circle())
     default:       return AnyShape(Capsule())
     }
@@ -131,13 +170,13 @@ struct LiquidTextSwiftUI: View {
 
   private var animState: AnimState {
     AnimState(
-      text: config.text,
-      fontSize: config.fontSize,
-      textColor: config.textColor,
-      tint: config.tint,
-      interactive: config.interactive,
-      shape: config.shape,
-      cornerRadius: config.cornerRadius
+      text: viewModel.text,
+      fontSize: viewModel.fontSize,
+      textColor: viewModel.textColor,
+      tint: viewModel.tint,
+      interactive: viewModel.interactive,
+      shape: viewModel.shape,
+      cornerRadius: viewModel.cornerRadius
     )
   }
 }
@@ -147,8 +186,9 @@ struct LiquidTextSwiftUI: View {
 @available(iOS 26.0, *)
 class LiquidTextPlatformView: NSObject, FlutterPlatformView {
   private let container: UIView
-  private var hostingController: UIHostingController<LiquidTextSwiftUI>
+  private let hostingController: UIHostingController<LiquidTextSwiftUI>
   private let channel: FlutterMethodChannel
+  private let viewModel: LiquidTextViewModel
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(
@@ -160,7 +200,10 @@ class LiquidTextPlatformView: NSObject, FlutterPlatformView {
     self.container.clipsToBounds = false
 
     let config = LiquidTextConfig.parse(from: args)
-    self.hostingController = UIHostingController(rootView: LiquidTextSwiftUI(config: config))
+    let viewModel = LiquidTextViewModel(config: config)
+    self.viewModel = viewModel
+
+    self.hostingController = UIHostingController(rootView: LiquidTextSwiftUI(viewModel: viewModel))
     self.hostingController.view.backgroundColor = .clear
     self.hostingController.overrideUserInterfaceStyle = config.isDark ? .dark : .light
 
@@ -180,7 +223,7 @@ class LiquidTextPlatformView: NSObject, FlutterPlatformView {
       switch call.method {
       case ChannelConstants.methodUpdateConfig:
         let cfg = LiquidTextConfig.parse(from: call.arguments)
-        self.hostingController.rootView = LiquidTextSwiftUI(config: cfg)
+        self.viewModel.apply(cfg)
         self.hostingController.overrideUserInterfaceStyle = cfg.isDark ? .dark : .light
         result(nil)
       case ChannelConstants.methodSetBrightness:
@@ -195,6 +238,10 @@ class LiquidTextPlatformView: NSObject, FlutterPlatformView {
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+
+  deinit {
+    channel.setMethodCallHandler(nil)
   }
 
   func view() -> UIView { container }

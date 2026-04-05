@@ -184,6 +184,7 @@ class CNSearchBar extends StatefulWidget {
 
 class _CNSearchBarState extends State<CNSearchBar>
     with SingleTickerProviderStateMixin {
+  final _viewKey = UniqueKey();
   late AnimationController _animationController;
   late Animation<double> _expandAnimation;
   late TextEditingController _textController;
@@ -375,6 +376,7 @@ class _CNSearchBarState extends State<CNSearchBar>
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onPlatformViewCreated,

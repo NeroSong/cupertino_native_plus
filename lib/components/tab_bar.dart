@@ -9,6 +9,7 @@ import '../style/sf_symbol.dart';
 import '../utils/platform_view_builder.dart';
 import '../style/tab_bar_search_item.dart';
 import '../utils/icon_renderer.dart';
+import '../utils/platform_view_guard.dart';
 import '../utils/version_detector.dart';
 import '../utils/theme_helper.dart';
 import 'icon.dart';
@@ -110,6 +111,7 @@ class CNTabBar extends StatefulWidget {
     this.shrinkCentered = true,
     this.splitSpacing =
         12.0, // Apple's recommended spacing for visual separation
+    this.splitRightAsButton = false,
     this.searchItem,
     this.searchController,
     this.labelStyle,
@@ -172,6 +174,12 @@ class CNTabBar extends StatefulWidget {
   /// Defaults to 12pt following Apple's HIG recommendations for visual separation.
   final double splitSpacing; // gap between left/right halves when split
 
+  /// When true and [split] is enabled, the right-side items act as plain
+  /// buttons instead of selectable tabs. Tapping them fires [onTap] but
+  /// does not change the visual selection — selection is controlled solely
+  /// by [currentIndex].
+  final bool splitRightAsButton;
+
   /// Optional search tab configuration.
   ///
   /// When provided, adds a dedicated search tab that follows iOS 26's native
@@ -225,6 +233,7 @@ class _CNTabBarState extends State<CNTabBar> {
   bool? _lastSplit;
   int? _lastRightCount;
   double? _lastSplitSpacing;
+  bool? _lastSplitRightAsButton;
   Map<String, dynamic>? _lastLabelStyle;
   Map<String, dynamic>? _lastActiveLabelStyle;
 
@@ -252,7 +261,15 @@ class _CNTabBarState extends State<CNTabBar> {
     if (_hasSearch) {
       _searchFocusNode = FocusNode();
     }
+    if (!PlatformViewGuard.isReady) {
+      PlatformViewGuard.ensureScheduled();
+      PlatformViewGuard.readyNotifier.addListener(_onPlatformViewGuardReady);
+    }
     _nativeTabBarFuture = _createNativeTabBarFuture();
+  }
+
+  void _onPlatformViewGuardReady() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -301,6 +318,7 @@ class _CNTabBarState extends State<CNTabBar> {
   void dispose() {
     widget.searchController?.removeListener(_onSearchControllerChanged);
     _searchFocusNode?.dispose();
+    PlatformViewGuard.readyNotifier.removeListener(_onPlatformViewGuardReady);
     _channel?.setMethodCallHandler(null);
     super.dispose();
   }
@@ -339,11 +357,12 @@ class _CNTabBarState extends State<CNTabBar> {
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS;
     final shouldUseNative =
-        isIOSOrMacOS && PlatformVersion.shouldUseNativeGlass;
+        isIOSOrMacOS &&
+        PlatformVersion.shouldUseNativeGlass &&
+        PlatformViewGuard.isReady;
 
-    // Fallback to Flutter widgets for non-iOS/macOS or iOS/macOS < 26
+    // Fallback to Flutter widgets for non-iOS/macOS, iOS/macOS < 26, or while guard is not ready
     if (!shouldUseNative) {
-      // For both non-iOS/macOS and iOS/macOS < 26, use Flutter-based implementation
       return _buildFlutterFallback(context);
     }
 
@@ -477,6 +496,7 @@ class _CNTabBarState extends State<CNTabBar> {
       'split': _hasSearch ? true : widget.split,
       'rightCount': widget.rightCount,
       'splitSpacing': widget.splitSpacing,
+      'splitRightAsButton': widget.splitRightAsButton,
       'style': capturedStyle
         ..addAll({
           if (capturedBackgroundColor != null)
@@ -593,6 +613,7 @@ class _CNTabBarState extends State<CNTabBar> {
     _lastSplit = widget.split;
     _lastRightCount = widget.rightCount;
     _lastSplitSpacing = widget.splitSpacing;
+    _lastSplitRightAsButton = widget.splitRightAsButton;
     _lastLabelStyle = encodeTextStyle(widget.labelStyle, context);
     _lastActiveLabelStyle = encodeTextStyle(widget.activeLabelStyle, context);
 
@@ -620,9 +641,20 @@ class _CNTabBarState extends State<CNTabBar> {
     if (call.method == 'valueChanged') {
       final args = call.arguments as Map?;
       final idx = (args?['index'] as num?)?.toInt();
-      if (idx != null && idx != _lastIndex) {
-        widget.onTap(idx);
-        _lastIndex = idx;
+      if (idx != null) {
+        final leftCount = widget.items.length - widget.rightCount;
+        final isRightButton =
+            widget.split && widget.splitRightAsButton && idx >= leftCount;
+        debugPrint(
+          '[CNTabBar Dart] valueChanged idx:$idx lastIndex:$_lastIndex isRightButton:$isRightButton currentIndex:${widget.currentIndex}',
+        );
+        if (isRightButton) {
+          // Button mode: always fire callback, don't update _lastIndex
+          widget.onTap(idx);
+        } else if (idx != _lastIndex) {
+          widget.onTap(idx);
+          _lastIndex = idx;
+        }
       }
     } else if (call.method == 'searchTextChanged') {
       final args = call.arguments as Map?;
@@ -655,6 +687,9 @@ class _CNTabBarState extends State<CNTabBar> {
 
     try {
       if (_lastIndex != idx) {
+        debugPrint(
+          '[CNTabBar Dart] _syncProps calling setSelectedIndex idx:$idx (was _lastIndex:$_lastIndex)',
+        );
         await ch.invokeMethod('setSelectedIndex', {'index': idx});
         _lastIndex = idx;
       }
@@ -809,7 +844,7 @@ class _CNTabBarState extends State<CNTabBar> {
         _requestIntrinsicSize();
       }
 
-      // Layout updates (split / insets)
+      // Structural layout updates (require tab bar recreation)
       if (_lastSplit != widget.split ||
           _lastRightCount != widget.rightCount ||
           _lastSplitSpacing != widget.splitSpacing) {
@@ -818,11 +853,35 @@ class _CNTabBarState extends State<CNTabBar> {
           'rightCount': widget.rightCount,
           'splitSpacing': widget.splitSpacing,
           'selectedIndex': widget.currentIndex,
+          'splitRightAsButton': widget.splitRightAsButton,
         });
         _lastSplit = widget.split;
         _lastRightCount = widget.rightCount;
         _lastSplitSpacing = widget.splitSpacing;
+        _lastSplitRightAsButton = widget.splitRightAsButton;
         _requestIntrinsicSize();
+        // setLayout recreates the tab bars — trigger refresh to force label
+        // rendering (same cycle-through-items trick used after initial creation).
+        if (defaultTargetPlatform == TargetPlatform.iOS) {
+          Future.delayed(const Duration(milliseconds: 50), () async {
+            if (mounted && _channel != null) {
+              try {
+                await _channel?.invokeMethod('refresh');
+                await _channel?.invokeMethod('setSelectedIndex', {
+                  'index': widget.currentIndex,
+                });
+              } catch (_) {}
+            }
+          });
+        }
+      }
+
+      // Behavioral update only — no tab bar recreation needed
+      if (_lastSplitRightAsButton != widget.splitRightAsButton) {
+        await ch.invokeMethod('setSplitRightAsButton', {
+          'value': widget.splitRightAsButton,
+        });
+        _lastSplitRightAsButton = widget.splitRightAsButton;
       }
 
       // Label style sync

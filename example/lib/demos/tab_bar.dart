@@ -14,6 +14,7 @@ class _TabBarDemoPageState extends State<TabBarDemoPage>
   late final TabController _controller;
   int _index = 0;
   bool _useAlternateIcons = false;
+  bool _splitRightAsButton = false;
 
   // Label style state
   int _labelStyleIndex = 0; // 0 = default, 1 = bold+large, 2 = Georgia italic
@@ -154,10 +155,30 @@ class _TabBarDemoPageState extends State<TabBarDemoPage>
               rightCount: 1,
               splitSpacing: 8,
               shrinkCentered: true,
+              splitRightAsButton: _splitRightAsButton,
               tint: Colors.red,
               labelStyle: _labelStyle,
               activeLabelStyle: _activeLabelStyle,
               onTap: (i) {
+                if (_splitRightAsButton && i >= 3) {
+                  // Right item acts as a button — show an action instead of selecting
+                  showCupertinoDialog(
+                    context: context,
+                    builder: (_) => CupertinoAlertDialog(
+                      title: const Text('Button tapped'),
+                      content: const Text(
+                        'The right split item is acting as a button.',
+                      ),
+                      actions: [
+                        CupertinoDialogAction(
+                          child: const Text('OK'),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
                 setState(() => _index = i);
                 _controller.animateTo(i);
               },
@@ -189,6 +210,29 @@ class _TabBarDemoPageState extends State<TabBarDemoPage>
                       _useAlternateIcons
                           ? CupertinoIcons.refresh
                           : CupertinoIcons.arrow_2_squarepath,
+                      color: CupertinoColors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+                // Toggle splitRightAsButton
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    setState(() {
+                      _splitRightAsButton = !_splitRightAsButton;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _splitRightAsButton
+                          ? CupertinoColors.systemGreen.withValues(alpha: 0.8)
+                          : CupertinoColors.systemGrey.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.hand_draw,
                       color: CupertinoColors.white,
                       size: 24,
                     ),

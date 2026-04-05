@@ -176,6 +176,7 @@ class CNFloatingIsland extends StatefulWidget {
 
 class _CNFloatingIslandState extends State<CNFloatingIsland>
     with SingleTickerProviderStateMixin {
+  final _viewKey = UniqueKey();
   late AnimationController _animationController;
   late Animation<double> _expandAnimation;
 
@@ -306,6 +307,7 @@ class _CNFloatingIslandState extends State<CNFloatingIsland>
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onPlatformViewCreated,

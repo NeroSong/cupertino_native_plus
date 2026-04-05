@@ -7,6 +7,7 @@ import '../style/sf_symbol.dart';
 import '../utils/platform_view_builder.dart';
 import '../utils/icon_renderer.dart';
 import '../utils/theme_helper.dart';
+import '../utils/platform_view_guard.dart';
 import '../utils/version_detector.dart';
 
 /// A platform-rendered SF Symbol icon, custom image asset, or IconData.
@@ -62,6 +63,7 @@ class CNIconView extends StatefulWidget {
 }
 
 class _CNIconViewState extends State<CNIconView> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
   bool? _lastIsDark;
   String? _lastName;
@@ -69,9 +71,27 @@ class _CNIconViewState extends State<CNIconView> {
   int? _lastColor;
   String? _lastMode;
   bool? _lastGradient;
-  // No intrinsic sizing storage; icons use explicit size.
+  // Cached futures for FutureBuilder — rebuilt only when source changes.
+  Future<String>? _assetPathFuture;
+  String? _lastAssetPath;
+  Future<Uint8List?>? _customIconFuture;
+  IconData? _lastCustomIcon;
+  double? _lastCustomIconSize;
 
   bool get _isDark => ThemeHelper.isDark(context);
+
+  @override
+  void initState() {
+    super.initState();
+    if (!PlatformViewGuard.isReady) {
+      PlatformViewGuard.ensureScheduled();
+      PlatformViewGuard.readyNotifier.addListener(_onPlatformViewGuardReady);
+    }
+  }
+
+  void _onPlatformViewGuardReady() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
@@ -87,6 +107,7 @@ class _CNIconViewState extends State<CNIconView> {
 
   @override
   void dispose() {
+    PlatformViewGuard.readyNotifier.removeListener(_onPlatformViewGuardReady);
     _channel?.setMethodCallHandler(null);
     super.dispose();
   }
@@ -98,8 +119,8 @@ class _CNIconViewState extends State<CNIconView> {
     // (regardless of PlatformVersion initialization or iOS version)
     final shouldUseNative = PlatformVersion.supportsSFSymbols;
 
-    // Fallback to Flutter widgets for non-iOS/macOS only
-    if (!shouldUseNative) {
+    // Fallback to Flutter widgets for non-iOS/macOS or while guard is not ready
+    if (!shouldUseNative || !PlatformViewGuard.isReady) {
       return _buildFlutterIcon(context);
     }
 
@@ -107,8 +128,13 @@ class _CNIconViewState extends State<CNIconView> {
 
     // Handle image asset (highest priority)
     if (widget.imageAsset != null) {
+      final assetPath = widget.imageAsset!.assetPath;
+      if (assetPath != _lastAssetPath) {
+        _lastAssetPath = assetPath;
+        _assetPathFuture = resolveAssetPathForPixelRatio(assetPath);
+      }
       return FutureBuilder<String>(
-        future: resolveAssetPathForPixelRatio(widget.imageAsset!.assetPath),
+        future: _assetPathFuture,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             final defaultSize =
@@ -133,8 +159,17 @@ class _CNIconViewState extends State<CNIconView> {
     // Handle custom icon (medium priority)
     if (widget.customIcon != null) {
       final iconSize = widget.size ?? widget.symbol?.size ?? 24.0;
+      if (widget.customIcon != _lastCustomIcon ||
+          iconSize != _lastCustomIconSize) {
+        _lastCustomIcon = widget.customIcon;
+        _lastCustomIconSize = iconSize;
+        _customIconFuture = iconDataToImageBytes(
+          widget.customIcon!,
+          size: iconSize,
+        );
+      }
       return FutureBuilder<Uint8List?>(
-        future: iconDataToImageBytes(widget.customIcon!, size: iconSize),
+        future: _customIconFuture,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return SizedBox(width: iconSize, height: widget.height ?? iconSize);
@@ -217,6 +252,7 @@ class _CNIconViewState extends State<CNIconView> {
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onPlatformViewCreated,

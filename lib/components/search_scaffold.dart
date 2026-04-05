@@ -126,6 +126,7 @@ class CNSearchScaffold extends StatefulWidget {
 }
 
 class _CNSearchScaffoldState extends State<CNSearchScaffold> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
   int? _lastIndex;
   bool _isSearchActive = false;
@@ -234,6 +235,7 @@ class _CNSearchScaffoldState extends State<CNSearchScaffold> {
         Positioned.fill(
           child: buildCupertinoPlatformView(
             context,
+            key: _viewKey,
             viewType: ViewTypes.cnSearchScaffold,
             creationParams: creationParams,
             onPlatformViewCreated: _onCreated,

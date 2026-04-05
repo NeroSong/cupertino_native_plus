@@ -110,6 +110,7 @@ class CNSlider extends StatefulWidget {
 }
 
 class _CNSliderState extends State<CNSlider> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
 
   double? _lastValue;
@@ -216,6 +217,7 @@ class _CNSliderState extends State<CNSlider> {
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onPlatformViewCreated,

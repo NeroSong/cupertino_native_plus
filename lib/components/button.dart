@@ -196,6 +196,7 @@ class CNButton extends StatefulWidget {
 }
 
 class _CNButtonState extends State<CNButton> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
   bool? _lastIsDark;
   int? _lastTint;
@@ -373,6 +374,7 @@ class _CNButtonState extends State<CNButton> {
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onCreated,

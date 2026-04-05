@@ -90,6 +90,7 @@ class CNSegmentedControl extends StatefulWidget {
 }
 
 class _CNSegmentedControlState extends State<CNSegmentedControl> {
+  final _viewKey = UniqueKey();
   MethodChannel? _channel;
 
   int? _lastSelected;
@@ -204,6 +205,7 @@ class _CNSegmentedControlState extends State<CNSegmentedControl> {
 
     final platformView = buildCupertinoPlatformView(
       context,
+      key: _viewKey,
       viewType: viewType,
       creationParams: creationParams,
       onPlatformViewCreated: _onPlatformViewCreated,
