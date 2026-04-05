@@ -218,13 +218,26 @@ CNTabBar(
       icon: const CNIcon.symbol('person.crop.circle'),
       activeIcon: const CNIcon.symbol('person.crop.circle.fill'),
     ),
+    CNTabBarItem(
+      label: 'Settings',
+      icon: const CNIcon.symbol('gear'),
+    ),
   ],
   currentIndex: _selectedIndex,
-  onTap: (index) => setState(() => _selectedIndex = index),
+  onTap: (index) {
+    if (index == 2) {
+      openSettings(); // Right item acts as a button
+    } else {
+      setState(() => _selectedIndex = index);
+    }
+  },
   split: true, // Separates tabs when scrolling
   rightCount: 1, // Number of tabs pinned to the right
+  splitRightAsButton: true, // Right items act as buttons, not tabs
 )
 ```
+
+When `splitRightAsButton` is `true`, the right-side items behave as plain buttons: tapping them fires `onTap` but does not change the visual selection. Selection is controlled solely by `currentIndex`.
 
 ### Native iOS 26 Tab Bar (CNTabBarNative)
 
@@ -312,7 +325,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  cupertino_native_plus: ^0.0.7
+  cupertino_native_plus: ^0.0.8
 ```
 
 ## Usage
@@ -571,7 +584,7 @@ print('macOS version: ${PlatformVersion.macOSVersion}');
 
 ## Migration from Previous Versions
 
-Version 0.0.7 introduces **breaking changes** to the icon/image API. See [MIGRATION.md](MIGRATION.md) for the full guide.
+Version 0.0.8 is a non-breaking update. Version 0.0.7 introduced **breaking changes** to the icon/image API. See [MIGRATION.md](MIGRATION.md) for the full guide.
 
 ### Quick Reference
 
@@ -587,7 +600,7 @@ Version 0.0.7 introduces **breaking changes** to the icon/image API. See [MIGRAT
 
 ```yaml
 dependencies:
-  cupertino_native_plus: ^0.0.7
+  cupertino_native_plus: ^0.0.8
 ```
 
 ## Contributing

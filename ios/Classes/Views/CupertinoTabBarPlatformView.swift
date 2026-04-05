@@ -12,6 +12,8 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   // MARK: - State Properties
   private var isSplit: Bool = false
   private var rightCountVal: Int = 1
+  private var splitRightAsButton: Bool = false
+  private var currentSelectedIndex: Int = 0
   private var currentLabels: [String] = []
   private var currentSymbols: [String] = []
   private var currentActiveSymbols: [String] = []
@@ -366,6 +368,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       if let s = dict["split"] as? NSNumber { split = s.boolValue }
       if let rc = dict["rightCount"] as? NSNumber { rightCount = rc.intValue }
       if let sp = dict["splitSpacing"] as? NSNumber { splitSpacingVal = CGFloat(truncating: sp) }
+      if let rb = dict["splitRightAsButton"] as? NSNumber { self.splitRightAsButton = rb.boolValue }
       if let ls = dict["labelStyle"] as? [String: Any] { self.labelStyleDict = ls }
       if let als = dict["activeLabelStyle"] as? [String: Any] { self.activeLabelStyleDict = als }
       // content insets controlled by Flutter padding; keep zero here
@@ -758,6 +761,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           let leftInset = self.leftInsetVal
           let rightInset = self.rightInsetVal
           if let sp = args["splitSpacing"] as? NSNumber { self.splitSpacingVal = CGFloat(truncating: sp) }
+          if let rb = args["splitRightAsButton"] as? NSNumber { self.splitRightAsButton = rb.boolValue }
           let selectedIndex = (args["selectedIndex"] as? NSNumber)?.intValue ?? 0
           // Remove existing bars
           self.tabBar?.removeFromSuperview(); self.tabBar = nil
@@ -853,11 +857,16 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
             if let ap = appearance { if #available(iOS 13.0, *) { left.standardAppearance = ap; right.standardAppearance = ap; if #available(iOS 15.0, *) { left.scrollEdgeAppearance = ap; right.scrollEdgeAppearance = ap } } }
             left.items = buildItems(0..<leftEnd)
             right.items = buildItems(leftEnd..<count)
-            if selectedIndex < leftEnd, let items = left.items { left.selectedItem = items[selectedIndex]; right.selectedItem = nil }
+            if self.splitRightAsButton {
+              // Button mode: right bar never shows selection; always select in left bar
+              right.selectedItem = nil
+              if selectedIndex < leftEnd, let items = left.items { left.selectedItem = items[selectedIndex] }
+            } else if selectedIndex < leftEnd, let items = left.items { left.selectedItem = items[selectedIndex]; right.selectedItem = nil }
             else if let items = right.items { let idx = selectedIndex - leftEnd; if idx >= 0 && idx < items.count { right.selectedItem = items[idx]; left.selectedItem = nil } }
             self.container.addSubview(left); self.container.addSubview(right)
             let capturedSelectedIndex = selectedIndex
             let capturedLeftEnd = leftEnd
+            let capturedButtonMode = self.splitRightAsButton
             DispatchQueue.main.async { [weak self, weak left, weak right] in
               guard let self = self, let left = left, let right = right else { return }
               self.activateSplitConstraintsIfNeeded(left: left, right: right, count: count, rightCount: rightCount, leftInset: leftInset, rightInset: rightInset)
@@ -873,7 +882,12 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
               left.items = leftItems
               right.items = rightItems
               // Restore selection after re-assigning items (re-assignment can reset selection)
-              if capturedSelectedIndex < capturedLeftEnd, let items = left.items, capturedSelectedIndex < items.count {
+              if capturedButtonMode {
+                right.selectedItem = nil
+                if capturedSelectedIndex < capturedLeftEnd, let items = left.items, capturedSelectedIndex < items.count {
+                  left.selectedItem = items[capturedSelectedIndex]
+                }
+              } else if capturedSelectedIndex < capturedLeftEnd, let items = left.items, capturedSelectedIndex < items.count {
                 left.selectedItem = items[capturedSelectedIndex]
                 right.selectedItem = nil
               } else if let items = right.items {
@@ -892,6 +906,22 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
                 left.layoutIfNeeded()
                 right.setNeedsLayout()
                 right.layoutIfNeeded()
+                // Restore selection again after final layout pass (layout can reset selection)
+                if capturedButtonMode {
+                  right.selectedItem = nil
+                  if capturedSelectedIndex < capturedLeftEnd, let items = left.items, capturedSelectedIndex < items.count {
+                    left.selectedItem = items[capturedSelectedIndex]
+                  }
+                } else if capturedSelectedIndex < capturedLeftEnd, let items = left.items, capturedSelectedIndex < items.count {
+                  left.selectedItem = items[capturedSelectedIndex]
+                  right.selectedItem = nil
+                } else if let items = right.items {
+                  let idx = capturedSelectedIndex - capturedLeftEnd
+                  if idx >= 0 && idx < items.count {
+                    right.selectedItem = items[idx]
+                    left.selectedItem = nil
+                  }
+                }
               }
             }
           } else {
@@ -920,8 +950,12 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
               bar.setNeedsLayout()
               bar.layoutIfNeeded()
               // Re-assign items to force label rendering
+              let savedSelected = bar.selectedItem
               let items = bar.items
               bar.items = items
+              // Restore selection after re-assigning items (re-assignment can reset selection)
+              if let saved = savedSelected { bar.selectedItem = saved }
+              else if let items = bar.items, selectedIndex >= 0, selectedIndex < items.count { bar.selectedItem = items[selectedIndex] }
               // Force another update cycle for text rendering
               DispatchQueue.main.async { [weak bar] in
                 guard let bar = bar else { return }
@@ -937,6 +971,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
         } else { result(FlutterError(code: "bad_args", message: "Missing layout", details: nil)) }
       case "setSelectedIndex":
         if let args = call.arguments as? [String: Any], let idx = (args["index"] as? NSNumber)?.intValue {
+          self.currentSelectedIndex = idx
           // Single bar
           if let bar = self.tabBar, let items = bar.items, idx >= 0, idx < items.count {
             withSuppressedSelectionCallbacks {
@@ -958,11 +993,16 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
             if let right = self.tabBarRight, let rightItems = right.items {
               let ridx = idx - leftItems.count
               if ridx >= 0, ridx < rightItems.count {
-                withSuppressedSelectionCallbacks {
-                  right.selectedItem = rightItems[ridx]
-                  self.tabBarLeft?.selectedItem = nil
+                if self.splitRightAsButton {
+                  // Button mode: don't visually select right items
+                  result(nil)
+                } else {
+                  withSuppressedSelectionCallbacks {
+                    right.selectedItem = rightItems[ridx]
+                    self.tabBarLeft?.selectedItem = nil
+                  }
+                  result(nil)
                 }
-                result(nil)
                 return
               }
             }
@@ -999,6 +1039,19 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           self.scheduleBadgeLayout()
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing badges", details: nil)) }
+      case "setSplitRightAsButton":
+        if let args = call.arguments as? [String: Any], let val = (args["value"] as? NSNumber)?.boolValue {
+          self.splitRightAsButton = val
+          // If turning on button mode, deselect right bar and restore left selection
+          if val, let right = self.tabBarRight, let left = self.tabBarLeft, let leftItems = left.items {
+            right.selectedItem = nil
+            let idx = self.currentSelectedIndex
+            if idx >= 0, idx < leftItems.count {
+              left.selectedItem = leftItems[idx]
+            }
+          }
+          result(nil)
+        } else { result(FlutterError(code: "bad_args", message: "Missing value", details: nil)) }
       case "refresh":
         // Force refresh for label rendering on iOS < 16
         // UITabBar only fully layouts labels when items are selected
@@ -1106,6 +1159,17 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     }
   }
 
+  deinit {
+    channel.setMethodCallHandler(nil)
+    tabBar?.delegate = nil
+    tabBarLeft?.delegate = nil
+    tabBarRight?.delegate = nil
+    tabBar?.removeFromSuperview()
+    tabBarLeft?.removeFromSuperview()
+    tabBarRight?.removeFromSuperview()
+    container.removeFromSuperview()
+  }
+
   func view() -> UIView { container }
 
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
@@ -1125,8 +1189,19 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     }
     // Split right
     if let right = tabBarRight, right === tabBar, let items = right.items, let idx = items.firstIndex(of: item), let left = tabBarLeft, let leftItems = left.items {
-      tabBarLeft?.selectedItem = nil
-      channel.invokeMethod("valueChanged", arguments: ["index": leftItems.count + idx])
+      if splitRightAsButton {
+        // Button mode: fire callback but restore previous selection
+        channel.invokeMethod("valueChanged", arguments: ["index": leftItems.count + idx])
+        // Deselect right and restore left selection
+        let prevIdx = self.currentSelectedIndex
+        if prevIdx < leftItems.count, prevIdx >= 0 {
+          right.selectedItem = nil
+          left.selectedItem = leftItems[prevIdx]
+        }
+      } else {
+        tabBarLeft?.selectedItem = nil
+        channel.invokeMethod("valueChanged", arguments: ["index": leftItems.count + idx])
+      }
       return
     }
   }

@@ -7,6 +7,7 @@ import '../channel/view_types.dart';
 import '../style/glass_effect.dart';
 import '../utils/platform_view_builder.dart';
 import '../utils/theme_helper.dart';
+import '../utils/platform_view_guard.dart';
 import '../utils/version_detector.dart';
 
 /// A container that applies Liquid Glass effects to its child widget.
@@ -46,6 +47,19 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer> {
   bool get _isDark => ThemeHelper.isDark(context);
 
   @override
+  void initState() {
+    super.initState();
+    if (!PlatformViewGuard.isReady) {
+      PlatformViewGuard.ensureScheduled();
+      PlatformViewGuard.readyNotifier.addListener(_onPlatformViewGuardReady);
+    }
+  }
+
+  void _onPlatformViewGuardReady() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _syncBrightnessIfNeeded();
@@ -60,14 +74,24 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer> {
   }
 
   @override
+  void dispose() {
+    PlatformViewGuard.readyNotifier.removeListener(_onPlatformViewGuardReady);
+    _channel?.setMethodCallHandler(null);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isIOSOrMacOS =
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS;
-    final shouldUseNative = isIOSOrMacOS && PlatformVersion.supportsLiquidGlass;
+    final shouldUseNative =
+        isIOSOrMacOS &&
+        PlatformVersion.supportsLiquidGlass &&
+        PlatformViewGuard.isReady;
 
     if (!shouldUseNative) {
-      // On unsupported platforms or versions, just return the child
+      // On unsupported platforms, versions, or while guard is not ready
       return widget.child;
     }
 

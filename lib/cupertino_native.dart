@@ -36,6 +36,7 @@ export 'style/tab_bar_search_item.dart';
 // Utilities
 export 'utils/version_detector.dart';
 export 'utils/theme_helper.dart';
+export 'utils/platform_view_guard.dart';
 
 import 'cupertino_native_platform_interface.dart';
 

@@ -1,3 +1,18 @@
+## 0.0.8
+
+### Features
+
+- **`splitRightAsButton`**: New `CNTabBar` property that makes right-side split items act as plain buttons instead of selectable tabs. When enabled, tapping right items fires `onTap` without changing the visual selection — selection is controlled solely by `currentIndex`. Useful for action buttons like settings or compose that shouldn't participate in tab selection.
+
+### Bug fixes
+
+- **Split tab bar default selection**: Fixed an issue where the rightmost item appeared visually selected alongside the current tab when using `split: true` with `rightCount: 1`. The root cause was UITabBar resetting `selectedItem` during item re-assignment for label rendering, with the final layout pass missing selection restoration.
+- **Non-split tab bar selection after layout**: Fixed the same item re-assignment selection loss in non-split tab bar mode.
+- **PlatformException on iOS hot restart**: Added `PlatformViewGuard` that delays platform-view creation by 500 ms on startup, preventing `PlatformException(recreating_view)` crashes when the Flutter engine hasn't fully purged stale view registrations from a previous Dart isolate. All native components (`CNIconView`, `LiquidGlassContainer`, `CNTabBar`) now show Flutter fallbacks during this brief window.
+- **iOS platform view cleanup**: Added `deinit` to `CupertinoTabBarPlatformView` and `CupertinoTabBarSearchPlatformView` to properly clear method channel handlers, nullify delegates, and remove views from the hierarchy on deallocation.
+
+---
+
 ## 0.0.7
 
 **cupertino_native_plus** — native Liquid Glass and Cupertino-style controls for iOS and macOS via platform views. This release ships the current public API, unified icon handling, and documentation. See [MIGRATION.md](MIGRATION.md) for breaking changes.
