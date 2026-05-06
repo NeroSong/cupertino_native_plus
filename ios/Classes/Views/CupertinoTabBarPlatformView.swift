@@ -1,10 +1,30 @@
 import Flutter
 import UIKit
 import SVGKit
+import os.log
+
+private let splitActivationLog = OSLog(subsystem: "cupertino_native_plus", category: "split-activation")
+
+/// Container view that notifies when it gains a window or lays out with non-zero width.
+/// Used to drive deferred split-tab-bar constraint activation without polling.
+final class CupertinoTabBarContainerView: UIView {
+  var onDidMoveToWindow: (() -> Void)?
+  var onLayout: (() -> Void)?
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    onDidMoveToWindow?()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout?()
+  }
+}
 
 class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelegate {
   private let channel: FlutterMethodChannel
-  private let container: UIView
+  private let container: CupertinoTabBarContainerView
   private var tabBar: UITabBar?
   private var tabBarLeft: UITabBar?
   private var tabBarRight: UITabBar?
@@ -39,6 +59,19 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   private var suppressSelectionCallbacks: Bool = false
   private var labelStyleDict: [String: Any]? = nil
   private var activeLabelStyleDict: [String: Any]? = nil
+
+  // Pending split-constraint activation deferred while view has no width
+  // (e.g. backgrounded at init). Resumed on foreground.
+  private struct PendingSplitActivation {
+    weak var left: UITabBar?
+    weak var right: UITabBar?
+    let count: Int
+    let rightCount: Int
+    let leftInset: CGFloat
+    let rightInset: CGFloat
+  }
+  private var pendingSplitActivation: PendingSplitActivation?
+  private var foregroundObserver: NSObjectProtocol?
 
   // MARK: - Text style helpers
 
@@ -225,6 +258,13 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
   /// Activates split tab bar constraints when container has a valid width to avoid
   /// unsatisfiable constraint warnings when platform view is still at width 0.
+  ///
+  /// If the view has no width yet (e.g. created while app is backgrounded), the
+  /// activation is parked in `pendingSplitActivation` and resumed on
+  /// `willEnterForegroundNotification`. This avoids the infinite
+  /// `DispatchQueue.main.async` re-dispatch loop that previously pegged the main
+  /// thread and triggered iOS 26 `cpu_resource_fatal` watchdog kills while
+  /// backgrounded.
   private func activateSplitConstraintsIfNeeded(
     left: UITabBar,
     right: UITabBar,
@@ -233,12 +273,43 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     leftInset: CGFloat,
     rightInset: CGFloat
   ) {
+    let appState = UIApplication.shared.applicationState
+    let stateStr: StaticString
+    switch appState {
+    case .active: stateStr = "active"
+    case .inactive: stateStr = "inactive"
+    case .background: stateStr = "background"
+    @unknown default: stateStr = "unknown"
+    }
     guard container.bounds.width > 0 else {
+      // Park whenever there is no realistic chance for layout to assign a width
+      // on the next runloop tick: backgrounded OR not yet in window hierarchy.
+      // Resume via bounds KVO (fires when width becomes non-zero) or foreground
+      // notification. Avoids infinite main-thread re-dispatch loop that
+      // triggered iOS 26 watchdog kills, and avoids ~1.6s spin at startup.
+      if appState == .background || container.window == nil {
+        os_log("park: width=0 state=%{public}s window=%{public}s", log: splitActivationLog, type: .info, String(describing: stateStr), container.window == nil ? "nil" : "set")
+        print("[CNTabBar] park: width=0 state=\(stateStr) window=\(container.window == nil ? "nil" : "set")")
+        pendingSplitActivation = PendingSplitActivation(
+          left: left, right: right, count: count, rightCount: rightCount,
+          leftInset: leftInset, rightInset: rightInset
+        )
+        installForegroundObserverIfNeeded()
+        return
+      }
+      os_log("retry: width=0 state=%{public}s window=set", log: splitActivationLog, type: .debug, String(describing: stateStr))
+      print("[CNTabBar] retry: width=0 state=\(stateStr) window=set")
       DispatchQueue.main.async { [weak self] in
-        self?.activateSplitConstraintsIfNeeded(left: left, right: right, count: count, rightCount: rightCount, leftInset: leftInset, rightInset: rightInset)
+        self?.activateSplitConstraintsIfNeeded(
+          left: left, right: right, count: count, rightCount: rightCount,
+          leftInset: leftInset, rightInset: rightInset
+        )
       }
       return
     }
+    os_log("activate: width=%{public}.1f state=%{public}s", log: splitActivationLog, type: .info, container.bounds.width, String(describing: stateStr))
+    print("[CNTabBar] activate: width=\(container.bounds.width) state=\(stateStr)")
+    pendingSplitActivation = nil
     let spacing = splitSpacingVal
     let leftWidth = left.sizeThatFits(.zero).width + leftInset * 2
     let rightWidth = right.sizeThatFits(.zero).width + rightInset * 2
@@ -273,6 +344,31 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     }
   }
 
+  private func installForegroundObserverIfNeeded() {
+    guard foregroundObserver == nil else { return }
+    foregroundObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.willEnterForegroundNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.resumePendingSplitActivation()
+    }
+  }
+
+  private func resumePendingSplitActivation() {
+    guard let p = pendingSplitActivation,
+          let left = p.left, let right = p.right else {
+      pendingSplitActivation = nil
+      return
+    }
+    os_log("resume: pending split activation triggered", log: splitActivationLog, type: .info)
+    print("[CNTabBar] resume: pending split activation triggered")
+    activateSplitConstraintsIfNeeded(
+      left: left, right: right, count: p.count, rightCount: p.rightCount,
+      leftInset: p.leftInset, rightInset: p.rightInset
+    )
+  }
+
   private func scheduleBadgeLayout() {
     let apply = { [weak self] in
       guard let self = self else { return }
@@ -301,7 +397,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "\(ChannelConstants.viewIdCupertinoNativeTabBar)_\(viewId)", binaryMessenger: messenger)
-    self.container = UIView(frame: frame)
+    self.container = CupertinoTabBarContainerView(frame: frame)
 
     var labels: [String] = []
     var symbols: [String] = []
@@ -384,11 +480,21 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     super.init()
 
     container.backgroundColor = .clear
+    container.onDidMoveToWindow = { [weak self] in
+      guard let self = self else { return }
+      print("[CNTabBar] didMoveToWindow window=\(self.container.window == nil ? "nil" : "set") width=\(self.container.bounds.width)")
+      if self.container.window != nil { self.resumePendingSplitActivation() }
+    }
+    container.onLayout = { [weak self] in
+      guard let self = self else { return }
+      if self.container.bounds.width > 0 { self.resumePendingSplitActivation() }
+    }
     containerBoundsObservation = container.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
       guard let self = self else { return }
       let oldWidth = change.oldValue?.width ?? 0
       let newWidth = change.newValue?.width ?? 0
       guard newWidth > 0, oldWidth != newWidth else { return }
+      self.resumePendingSplitActivation()
       self.scheduleBadgeLayout()
     }
     container.clipsToBounds = false // Allow tab bar and badge overlays to draw without being cut at top/bottom
@@ -1163,6 +1269,9 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   }
 
   deinit {
+    if let token = foregroundObserver {
+      NotificationCenter.default.removeObserver(token)
+    }
     channel.setMethodCallHandler(nil)
     tabBar?.delegate = nil
     tabBarLeft?.delegate = nil

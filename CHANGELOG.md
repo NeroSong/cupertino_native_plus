@@ -1,3 +1,15 @@
+## 0.0.9
+
+### Bug fixes
+
+- **iOS 26 watchdog kill in backgrounded split tab bar**: Fixed `cpu_resource_fatal` termination caused by an infinite `DispatchQueue.main.async` re-dispatch loop in `CupertinoTabBarPlatformView.activateSplitConstraintsIfNeeded` when a split tab bar was created while the app was backgrounded or before the view entered the window hierarchy. Activation is now parked in a `pendingSplitActivation` struct and resumed via `UIApplication.willEnterForegroundNotification` or container layout/window callbacks (`CupertinoTabBarContainerView.didMoveToWindow` / `layoutSubviews`), eliminating the main-thread spin and ~1.6s startup stall.
+
+### Internal
+
+- Added `os_log` instrumentation under subsystem `cupertino_native_plus`, category `split-activation`, for diagnosing split tab bar constraint activation timing in the field.
+
+---
+
 ## 0.0.8
 
 ### Features
