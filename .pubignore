@@ -3,6 +3,14 @@ example/build/
 example/.dart_tool/
 .dart_tool/
 
+# Example app native dependency artifacts (CocoaPods, Flutter-generated, symlinks)
+example/.flutter-plugins-dependencies
+example/ios/.symlinks/
+example/ios/Flutter/
+example/ios/Pods/
+example/macos/Flutter/ephemeral/
+example/macos/Pods/
+
 # IDE
 .idea/
 .vscode/
