@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 
 /// Guards platform-view creation during app startup / hot-restart.
 ///
@@ -8,10 +8,12 @@ import 'package:flutter/widgets.dart';
 /// before the engine has fully purged these stale registrations, it
 /// rejects them with `PlatformException(recreating_view, ...)`.
 ///
-/// This guard delays platform-view widgets by a short fixed duration
-/// (500 ms) after the first widget requests readiness, giving the
-/// engine ample time to run its internal cleanup.  The delay fires
-/// only once per app lifetime — subsequent checks are instantaneous.
+/// In debug mode (where hot restart can occur), the guard delays
+/// platform-view widgets by a short fixed duration (500 ms) after the
+/// first widget requests readiness, giving the engine ample time to
+/// run its internal cleanup.  In release mode there is no prior Dart
+/// isolate to leave residual registrations, so the guard is ready
+/// immediately to avoid a visible fallback flash on cold start.
 ///
 /// Usage inside component `build` methods:
 /// ```dart
@@ -24,14 +26,16 @@ import 'package:flutter/widgets.dart';
 class PlatformViewGuard {
   PlatformViewGuard._();
 
-  static bool _ready = false;
+  static bool _ready = kReleaseMode;
   static bool _scheduled = false;
 
   /// Whether it is safe to create platform views.
   static bool get isReady => _ready;
 
   /// Notifier that fires once when readiness flips to `true`.
-  static final ValueNotifier<bool> readyNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> readyNotifier = ValueNotifier<bool>(
+    kReleaseMode,
+  );
 
   /// Schedules the readiness flip if it hasn't been scheduled yet.
   ///

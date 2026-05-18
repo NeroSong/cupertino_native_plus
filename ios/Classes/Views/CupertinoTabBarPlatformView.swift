@@ -1171,7 +1171,9 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           bar.delegate = nil
           DispatchQueue.main.async { [weak self, weak bar, weak originalSelected] in
             guard let self = self, let bar = bar, let items = bar.items, !items.isEmpty else { return }
-            // Cycle through each item to force label layout
+            // Suppress the visible selection-pill morph that would otherwise
+            // animate through every tab as we cycle selection to force label layout.
+            UIView.setAnimationsEnabled(false)
             var index = 0
             func selectNext() {
               guard index < items.count else {
@@ -1185,6 +1187,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
                 bar.layoutIfNeeded()
                 // Restore delegate
                 bar.delegate = self
+                UIView.setAnimationsEnabled(true)
                 self.scheduleBadgeLayout()
                 return
               }
@@ -1207,7 +1210,10 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           DispatchQueue.main.async { [weak self, weak left, weak right, weak leftOriginal, weak rightOriginal] in
             guard let self = self, let left = left, let right = right,
                   let leftItems = left.items, let rightItems = right.items else { return }
-            
+
+            // Suppress the visible selection-pill morph during the refresh cycle.
+            UIView.setAnimationsEnabled(false)
+
             // Process left items
             var leftIndex = 0
             func selectNextLeft() {
@@ -1244,6 +1250,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
                     // Restore delegates
                     left.delegate = self
                     right.delegate = self
+                    UIView.setAnimationsEnabled(true)
                     self.scheduleBadgeLayout()
                   }
                 }

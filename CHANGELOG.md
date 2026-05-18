@@ -1,3 +1,12 @@
+## 0.0.10
+
+### Bug fixes
+
+- **Launch-time selection-pill morph on `CNTabBar`**: Fixed a visible animation glitch where the native tab bar's selection pill morphed through every item during the initial label-rendering refresh cycle. The refresh logic in `CupertinoTabBarPlatformView` (`refresh` method) cycles `selectedItem` across all items to force UITabBar to layout labels (required on iOS < 16); each assignment was driving the implicit selection-pill animation. The refresh cycle (both single-bar and split-bar paths) is now wrapped in `UIView.setAnimationsEnabled(false)` / `setAnimationsEnabled(true)` so labels still render correctly while the user-visible morph is suppressed.
+- **`PlatformViewGuard` 500 ms fallback flash on release cold start**: The guard's hot-restart protection is debug-only by design (release builds have no prior Dart isolate to leave stale `FlutterPlatformViewsController` registrations), but the 500 ms readiness delay was applied in both modes, producing a brief flash of Flutter fallback widgets before native views appeared on first launch. `PlatformViewGuard.isReady` and `readyNotifier` now initialize to `true` in `kReleaseMode`, eliminating the cold-start flash while preserving the debug-mode hot-restart safety window.
+
+---
+
 ## 0.0.9
 
 ### Bug fixes
