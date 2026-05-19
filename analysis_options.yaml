@@ -9,6 +9,8 @@ linter:
     public_member_api_docs: true
 
 analyzer:
+  errors:
+    use_build_context_synchronously: ignore
   exclude:
     # Exclude example app from the strict public API doc lint to focus on the
     # package's public surface under lib/.

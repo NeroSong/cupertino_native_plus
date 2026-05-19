@@ -14,22 +14,9 @@ Native Liquid Glass widgets for iOS and macOS in Flutter with pixel-perfect fide
   s.author           = { 'Narek Manukyan' => 'narek.manukyan.2031@gmail.com' }
 
   s.source           = { :path => '.' }
-  # Shared with iOS: GlassButtonConfig, ChannelConstants, ImageManagerConfig, ImageFormatDetection
-  s.source_files = 'Classes/**/*',
-    '../ios/Classes/Shared/GlassButtonConfig.swift',
-    '../ios/Classes/Shared/GlassButtonIconConfig.swift',
-    '../ios/Classes/Shared/ChannelConstants.swift',
-    '../ios/Classes/Shared/ImageManagerConfig.swift',
-    '../ios/Classes/Shared/ImageFormatDetection.swift',
-    '../ios/Classes/Shared/LiquidGlassContainerConfig.swift',
-    '../ios/Classes/Shared/SwitchShared.swift',
-    '../ios/Classes/Shared/SliderShared.swift'
+  s.source_files = 'cupertino_native_plus/Sources/cupertino_native_plus/**/*.swift'
 
-  # If your plugin requires a privacy manifest, for example if it collects user
-  # data, update the PrivacyInfo.xcprivacy file to describe your plugin's
-  # privacy impact, and then uncomment this line. For more information,
-  # see https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
-  # s.resource_bundles = {'cupertino_native_plus_privacy' => ['Resources/PrivacyInfo.xcprivacy']}
+  s.resource_bundles = {'cupertino_native_plus_privacy' => ['cupertino_native_plus/Sources/cupertino_native_plus/PrivacyInfo.xcprivacy']}
 
   s.dependency 'FlutterMacOS'
 

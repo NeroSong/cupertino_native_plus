@@ -1,3 +1,15 @@
+## 0.0.11
+
+### Features
+
+- **Swift Package Manager support**: Added `Package.swift` for both `ios/` and `macos/` plugin targets following the Flutter SPM plugin-author convention. Sources moved to `<platform>/cupertino_native_plus/Sources/cupertino_native_plus/` via `git mv` (history preserved). The plugin now resolves under Flutter SPM resolution alongside CocoaPods (both build paths supported). iOS `Package.swift` declares the SVGKit SPM dependency. Podspecs updated to the new source paths; the macOS podspec gains `PrivacyInfo` `resource_bundles`.
+
+### Bug fixes
+
+- **macOS compile errors** (pre-existing, surfaced by SPM build): `FlutterPlatformView` adopted on macOS `NSObject` subclasses where the protocol does not exist in `FlutterMacOS` (only `FlutterPlatformViewFactory` does). Adoption removed from `LiquidGlassContainerNSView`, `FallbackLiquidGlassContainerNSView`, `LiquidTextNSView`, `FallbackLiquidTextNSView` — factories continue to use `FlutterPlatformViewFactory` correctly. `NSImage.tinted(with:)` extension declared in four files with conflicting signatures; canonical version retained in `ImageUtils.swift`, duplicates removed from `CupertinoIconNSView` and `CupertinoPopupMenuButtonNSView`, the template-specific variant in `CupertinoButtonNSView` renamed to `templateTinted(with:)` along with its call sites. `CupertinoButtonNSView` referenced `dict` outside its `if let` scope in the non-SwiftUI branch — replaced with a local optional dictionary access; the `let title = button.title` conditional bindings were against the non-optional `NSButton.title` property — replaced with direct property access. `GlassButtonSwiftUI` (macOS) title-only `Label { Text(...) }` initializer became ambiguous against the new `Label(_ configuration: LabelStyleConfiguration)` overload introduced in the macOS 26 SDK — replaced with direct `Text(...)` matching the iOS sibling file.
+
+---
+
 ## 0.0.10
 
 ### Bug fixes
