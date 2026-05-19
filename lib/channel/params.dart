@@ -45,8 +45,8 @@ Map<String, dynamic>? encodeTextStyle(TextStyle? style, BuildContext context) {
   final map = <String, dynamic>{};
   if (style.fontSize != null) map['fontSize'] = style.fontSize;
   if (style.fontWeight != null) {
-    // FontWeight.index is 0-based (w100=0 … w900=8); CSS scale is 100-900.
-    map['fontWeight'] = (style.fontWeight!.index + 1) * 100;
+    // Map Dart's FontWeight (w100=100 ... w900=900) to numeric value expected on native/CSS side.
+    map['fontWeight'] = style.fontWeight!.value;
   }
   if (style.fontStyle == FontStyle.italic) map['italic'] = true;
   if (style.fontFamily != null) map['fontFamily'] = style.fontFamily;

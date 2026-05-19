@@ -31,7 +31,7 @@ struct GlassButtonSwiftUI: View {
         .padding(config.padding)
         .frame(minWidth: frameMinWidth, maxWidth: frameMaxWidth, minHeight: config.minHeight)
         .contentShape(shape)
-        .glassEffect(glassEffectValue, in: .capsule)
+        .glassEffect(glassEffectValue, in: shape)
         .applyGlassEffectModifiers(
           unionId: glassEffectUnionId,
           id: glassEffectId,
@@ -40,6 +40,7 @@ struct GlassButtonSwiftUI: View {
         .animation(.easeInOut(duration: 0.25), value: animState)
     }
     .disabled(!isEnabled)
+    .buttonStyle(.plain)
   }
 
   // MARK: - Frame helpers
@@ -290,17 +291,4 @@ extension View {
   }
 }
 
-// MARK: - AnyShape
-
-@available(macOS 26.0, *)
-struct AnyShape: Shape {
-  private let _path: (CGRect) -> Path
-
-  init<S: Shape>(_ shape: S) {
-    _path = shape.path(in:)
-  }
-
-  func path(in rect: CGRect) -> Path {
-    return _path(rect)
-  }
-}
+// AnyShape uses SwiftUI's built-in (macOS 13+); macOS 26 gate covers it.

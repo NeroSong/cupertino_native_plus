@@ -15,6 +15,9 @@ class CupertinoSliderNSView: NSView {
     var enabled: Bool = true
     var isDark: Bool = false
     var initialTint: NSColor? = nil
+    var initialTrackTint: NSColor? = nil
+    var initialThumbTint: NSColor? = nil
+    var initialTrackBgTint: NSColor? = nil
     var initialStep: Double? = nil
     if let dict = args as? [String: Any] {
       if let v = dict["value"] as? NSNumber { initialValue = v.doubleValue }
@@ -23,8 +26,11 @@ class CupertinoSliderNSView: NSView {
       if let v = dict["enabled"] as? NSNumber { enabled = v.boolValue }
       if let v = dict["isDark"] as? NSNumber { isDark = v.boolValue }
       if let v = dict["step"] as? NSNumber { initialStep = v.doubleValue }
-      if let style = dict["style"] as? [String: Any], let tintNum = style["tint"] as? NSNumber {
-        initialTint = ImageUtils.colorFromARGB(tintNum.intValue)
+      if let style = dict["style"] as? [String: Any] {
+        if let n = style["tint"] as? NSNumber { initialTint = ImageUtils.colorFromARGB(n.intValue) }
+        if let n = style["trackTint"] as? NSNumber { initialTrackTint = ImageUtils.colorFromARGB(n.intValue) }
+        if let n = style["thumbTint"] as? NSNumber { initialThumbTint = ImageUtils.colorFromARGB(n.intValue) }
+        if let n = style["trackBackgroundTint"] as? NSNumber { initialTrackBgTint = ImageUtils.colorFromARGB(n.intValue) }
       }
     }
 
@@ -51,12 +57,22 @@ class CupertinoSliderNSView: NSView {
     ])
 
     if let tint = initialTint { model.tintColor = Color(tint) }
+    if let c = initialTrackTint { model.trackTint = Color(c) }
+    if let c = initialThumbTint { model.thumbTint = Color(c) }
+    if let c = initialTrackBgTint { model.trackBackgroundTint = Color(c) }
 
     channel.setMethodCallHandler { call, result in
       switch call.method {
       case "setValue":
         if let args = call.arguments as? [String: Any], let value = (args["value"] as? NSNumber)?.doubleValue {
-          model.value = value
+          let animated = (args["animated"] as? NSNumber)?.boolValue ?? false
+          if animated {
+            withAnimation(.easeInOut) {
+              model.value = value
+            }
+          } else {
+            model.value = value
+          }
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing value", details: nil)) }
       case "setRange":
@@ -75,14 +91,17 @@ class CupertinoSliderNSView: NSView {
         } else { result(FlutterError(code: "bad_args", message: "Missing enabled", details: nil)) }
       case "setStyle":
         if let args = call.arguments as? [String: Any] {
-          if let tintNum = args["tint"] as? NSNumber {
-            let ns = ImageUtils.colorFromARGB(tintNum.intValue)
-            model.tintColor = Color(ns)
+          if let n = args["tint"] as? NSNumber {
+            model.tintColor = Color(ImageUtils.colorFromARGB(n.intValue))
           }
-          // Best-effort: if specific track/thumb colors provided, prefer them as overall tint
-          if let tintNum = (args["trackTint"] as? NSNumber) ?? (args["thumbTint"] as? NSNumber) {
-            let ns = ImageUtils.colorFromARGB(tintNum.intValue)
-            model.tintColor = Color(ns)
+          if let n = args["trackTint"] as? NSNumber {
+            model.trackTint = Color(ImageUtils.colorFromARGB(n.intValue))
+          }
+          if let n = args["thumbTint"] as? NSNumber {
+            model.thumbTint = Color(ImageUtils.colorFromARGB(n.intValue))
+          }
+          if let n = args["trackBackgroundTint"] as? NSNumber {
+            model.trackBackgroundTint = Color(ImageUtils.colorFromARGB(n.intValue))
           }
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing style", details: nil)) }

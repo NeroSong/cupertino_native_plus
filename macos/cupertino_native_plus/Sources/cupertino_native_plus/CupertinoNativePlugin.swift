@@ -33,6 +33,15 @@ public class CupertinoNativePlugin: NSObject, FlutterPlugin {
 
     let liquidTextFactory = LiquidTextFactory(messenger: registrar.messenger)
     registrar.register(liquidTextFactory, withId: ChannelConstants.viewIdCNLiquidText)
+
+    let glassButtonGroupFactory = CupertinoGlassButtonGroupFactory(messenger: registrar.messenger)
+    registrar.register(glassButtonGroupFactory, withId: ChannelConstants.viewIdCupertinoNativeGlassButtonGroup)
+
+    let floatingIslandFactory = FloatingIslandFactory(messenger: registrar.messenger)
+    registrar.register(floatingIslandFactory, withId: ChannelConstants.viewIdCNFloatingIsland)
+
+    let searchBarFactory = CupertinoSearchBarFactory(messenger: registrar.messenger)
+    registrar.register(searchBarFactory, withId: ChannelConstants.viewIdCNSearchBar)
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

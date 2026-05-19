@@ -44,7 +44,8 @@ public struct CupertinoSliderView: View {
     .onChange(of: model.value) { newValue in
       model.onChange(newValue)
     }
-    .accentColor(model.tintColor)
+    // trackTint fills below thumb; use accentColor.
+    .accentColor(model.trackTint ?? model.tintColor)
   }
 }
 #endif
@@ -55,6 +56,12 @@ public class SliderModel: ObservableObject {
   @Published public var max: Double
   @Published public var enabled: Bool
   @Published public var tintColor: Color = .accentColor
+  /// Active track fill (below thumb).
+  @Published public var trackTint: Color? = nil
+  /// Thumb color.
+  @Published public var thumbTint: Color? = nil
+  /// Inactive track (above thumb).
+  @Published public var trackBackgroundTint: Color? = nil
   /// Optional step for macOS; iOS ignores.
   @Published public var step: Double? = nil
   public var onChange: (Double) -> Void
