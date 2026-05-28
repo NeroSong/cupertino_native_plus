@@ -62,6 +62,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   private var labelRefreshGeneration: Int = 0
   private var hasScheduledNonZeroBoundsRefresh: Bool = false
   private var isRefreshingLabels: Bool = false
+  private var needsLabelRefresh: Bool = false
 
   // Pending split-constraint activation deferred while view has no width
   // (e.g. backgrounded at init). Resumed on foreground.
@@ -483,6 +484,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       self.scheduleBadgeLayout()
       UIView.setAnimationsEnabled(animationsWereEnabled)
       self.isRefreshingLabels = false
+      self.needsLabelRefresh = false
     }
 
     if let bar = tabBar, let items = bar.items, !items.isEmpty {
@@ -542,6 +544,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   private func scheduleLabelRefresh(resetBoundsTrigger: Bool = false) {
     if resetBoundsTrigger {
       hasScheduledNonZeroBoundsRefresh = false
+      needsLabelRefresh = true
     }
 
     labelRefreshGeneration += 1
@@ -550,7 +553,9 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
     for delay in delays {
       let execute = { [weak self] in
-        guard let self = self, self.labelRefreshGeneration == generation else { return }
+        guard let self = self,
+              self.labelRefreshGeneration == generation,
+              self.needsLabelRefresh else { return }
         self.performLabelRefreshIfReady(allowWithoutStableBounds: delay >= 0.3)
       }
       if delay == 0 {
@@ -651,14 +656,21 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       print("[CNTabBar] didMoveToWindow window=\(self.container.window == nil ? "nil" : "set") width=\(self.container.bounds.width)")
       if self.container.window != nil {
         self.resumePendingSplitActivation()
-        self.scheduleLabelRefresh()
+        if self.needsLabelRefresh {
+          if self.container.bounds.width > 0, !self.hasScheduledNonZeroBoundsRefresh {
+            self.hasScheduledNonZeroBoundsRefresh = true
+          }
+          self.scheduleLabelRefresh()
+        } else {
+          self.scheduleBadgeLayout()
+        }
       }
     }
     container.onLayout = { [weak self] in
       guard let self = self else { return }
       if self.container.bounds.width > 0 {
         self.resumePendingSplitActivation()
-        if !self.hasScheduledNonZeroBoundsRefresh {
+        if self.needsLabelRefresh, !self.hasScheduledNonZeroBoundsRefresh {
           self.hasScheduledNonZeroBoundsRefresh = true
           self.scheduleLabelRefresh()
         }
@@ -671,7 +683,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       guard newWidth > 0, oldWidth != newWidth else { return }
       self.resumePendingSplitActivation()
       self.scheduleBadgeLayout()
-      if !self.hasScheduledNonZeroBoundsRefresh {
+      if self.needsLabelRefresh, !self.hasScheduledNonZeroBoundsRefresh {
         self.hasScheduledNonZeroBoundsRefresh = true
         self.scheduleLabelRefresh()
       }
@@ -1345,7 +1357,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing value", details: nil)) }
       case "refresh":
-        self.scheduleLabelRefresh()
+        self.scheduleLabelRefresh(resetBoundsTrigger: true)
         result(nil)
       case "setLabelStyle":
         self.labelStyleDict = call.arguments as? [String: Any]
