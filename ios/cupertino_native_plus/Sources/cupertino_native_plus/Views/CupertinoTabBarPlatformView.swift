@@ -59,6 +59,9 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   private var suppressSelectionCallbacks: Bool = false
   private var labelStyleDict: [String: Any]? = nil
   private var activeLabelStyleDict: [String: Any]? = nil
+  private var labelRefreshGeneration: Int = 0
+  private var hasScheduledNonZeroBoundsRefresh: Bool = false
+  private var isRefreshingLabels: Bool = false
 
   // Pending split-constraint activation deferred while view has no width
   // (e.g. backgrounded at init). Resumed on foreground.
@@ -395,6 +398,169 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     suppressSelectionCallbacks = false
   }
 
+  private func restoreSelection(
+    singleFallback: UITabBarItem? = nil,
+    leftFallback: UITabBarItem? = nil,
+    rightFallback: UITabBarItem? = nil
+  ) {
+    if let bar = tabBar, let items = bar.items {
+      if currentSelectedIndex >= 0, currentSelectedIndex < items.count {
+        bar.selectedItem = items[currentSelectedIndex]
+      } else {
+        bar.selectedItem = singleFallback
+      }
+      bar.setNeedsLayout()
+      bar.layoutIfNeeded()
+      return
+    }
+
+    guard let left = tabBarLeft, let right = tabBarRight, let leftItems = left.items else { return }
+    if splitRightAsButton {
+      right.selectedItem = nil
+      if currentSelectedIndex >= 0, currentSelectedIndex < leftItems.count {
+        left.selectedItem = leftItems[currentSelectedIndex]
+      } else {
+        left.selectedItem = leftFallback
+      }
+      left.setNeedsLayout()
+      left.layoutIfNeeded()
+      right.setNeedsLayout()
+      right.layoutIfNeeded()
+      return
+    }
+
+    if currentSelectedIndex >= 0, currentSelectedIndex < leftItems.count {
+      left.selectedItem = leftItems[currentSelectedIndex]
+      right.selectedItem = nil
+    } else if let rightItems = right.items {
+      let rightIndex = currentSelectedIndex - leftItems.count
+      if rightIndex >= 0, rightIndex < rightItems.count {
+        right.selectedItem = rightItems[rightIndex]
+        left.selectedItem = nil
+      } else {
+        left.selectedItem = leftFallback
+        right.selectedItem = rightFallback
+      }
+    } else {
+      left.selectedItem = leftFallback
+      right.selectedItem = rightFallback
+    }
+    left.setNeedsLayout()
+    left.layoutIfNeeded()
+    right.setNeedsLayout()
+    right.layoutIfNeeded()
+  }
+
+  private func performLabelRefreshIfReady(allowWithoutStableBounds: Bool = false) {
+    guard !isRefreshingLabels else { return }
+    guard container.window != nil else { return }
+    guard container.bounds.width > 0 || allowWithoutStableBounds else { return }
+
+    container.setNeedsLayout()
+    container.layoutIfNeeded()
+
+    let animationsWereEnabled = UIView.areAnimationsEnabled
+    UIView.setAnimationsEnabled(false)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+
+    func completeRefresh(
+      singleFallback: UITabBarItem? = nil,
+      leftFallback: UITabBarItem? = nil,
+      rightFallback: UITabBarItem? = nil
+    ) {
+      self.restoreSelection(
+        singleFallback: singleFallback,
+        leftFallback: leftFallback,
+        rightFallback: rightFallback
+      )
+      CATransaction.commit()
+      UIView.performWithoutAnimation {
+        self.container.setNeedsLayout()
+        self.container.layoutIfNeeded()
+      }
+      self.applyLabelStyles()
+      self.scheduleBadgeLayout()
+      UIView.setAnimationsEnabled(animationsWereEnabled)
+      self.isRefreshingLabels = false
+    }
+
+    if let bar = tabBar, let items = bar.items, !items.isEmpty {
+      let originalDelegate = bar.delegate
+      let originalSelected = bar.selectedItem
+      bar.delegate = nil
+      isRefreshingLabels = true
+
+      UIView.performWithoutAnimation {
+        for item in items {
+          bar.selectedItem = item
+          bar.setNeedsLayout()
+          bar.layoutIfNeeded()
+        }
+        bar.delegate = originalDelegate
+      }
+      completeRefresh(singleFallback: originalSelected)
+      return
+    }
+
+    guard let left = tabBarLeft, let right = tabBarRight else {
+      completeRefresh()
+      return
+    }
+    let leftItems = left.items ?? []
+    let rightItems = right.items ?? []
+    guard !leftItems.isEmpty || !rightItems.isEmpty else {
+      completeRefresh()
+      return
+    }
+
+    let leftDelegate = left.delegate
+    let rightDelegate = right.delegate
+    let leftOriginal = left.selectedItem
+    let rightOriginal = right.selectedItem
+    left.delegate = nil
+    right.delegate = nil
+    isRefreshingLabels = true
+
+    UIView.performWithoutAnimation {
+      for item in leftItems {
+        left.selectedItem = item
+        left.setNeedsLayout()
+        left.layoutIfNeeded()
+      }
+      for item in rightItems {
+        right.selectedItem = item
+        right.setNeedsLayout()
+        right.layoutIfNeeded()
+      }
+      left.delegate = leftDelegate
+      right.delegate = rightDelegate
+    }
+    completeRefresh(leftFallback: leftOriginal, rightFallback: rightOriginal)
+  }
+
+  private func scheduleLabelRefresh(resetBoundsTrigger: Bool = false) {
+    if resetBoundsTrigger {
+      hasScheduledNonZeroBoundsRefresh = false
+    }
+
+    labelRefreshGeneration += 1
+    let generation = labelRefreshGeneration
+    let delays: [TimeInterval] = [0.0, 0.05, 0.15, 0.3]
+
+    for delay in delays {
+      let execute = { [weak self] in
+        guard let self = self, self.labelRefreshGeneration == generation else { return }
+        self.performLabelRefreshIfReady(allowWithoutStableBounds: delay >= 0.3)
+      }
+      if delay == 0 {
+        DispatchQueue.main.async(execute: execute)
+      } else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: execute)
+      }
+    }
+  }
+
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "\(ChannelConstants.viewIdCupertinoNativeTabBar)_\(viewId)", binaryMessenger: messenger)
     self.container = CupertinoTabBarContainerView(frame: frame)
@@ -483,11 +649,20 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     container.onDidMoveToWindow = { [weak self] in
       guard let self = self else { return }
       print("[CNTabBar] didMoveToWindow window=\(self.container.window == nil ? "nil" : "set") width=\(self.container.bounds.width)")
-      if self.container.window != nil { self.resumePendingSplitActivation() }
+      if self.container.window != nil {
+        self.resumePendingSplitActivation()
+        self.scheduleLabelRefresh()
+      }
     }
     container.onLayout = { [weak self] in
       guard let self = self else { return }
-      if self.container.bounds.width > 0 { self.resumePendingSplitActivation() }
+      if self.container.bounds.width > 0 {
+        self.resumePendingSplitActivation()
+        if !self.hasScheduledNonZeroBoundsRefresh {
+          self.hasScheduledNonZeroBoundsRefresh = true
+          self.scheduleLabelRefresh()
+        }
+      }
     }
     containerBoundsObservation = container.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
       guard let self = self else { return }
@@ -496,6 +671,10 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       guard newWidth > 0, oldWidth != newWidth else { return }
       self.resumePendingSplitActivation()
       self.scheduleBadgeLayout()
+      if !self.hasScheduledNonZeroBoundsRefresh {
+        self.hasScheduledNonZeroBoundsRefresh = true
+        self.scheduleLabelRefresh()
+      }
     }
     container.clipsToBounds = false // Allow tab bar and badge overlays to draw without being cut at top/bottom
     container.layer.shadowOpacity = 0 // Explicitly disable layer shadow
@@ -711,6 +890,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     if labelStyleDict != nil || activeLabelStyleDict != nil {
       applyLabelStyles()
     }
+    scheduleLabelRefresh(resetBoundsTrigger: true)
     channel.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { result(nil); return }
       switch call.method {
@@ -852,11 +1032,13 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
             }
             result(nil)
             self.scheduleBadgeLayout()
+            self.scheduleLabelRefresh(resetBoundsTrigger: true)
           } else if let bar = self.tabBar {
             bar.items = buildItems(0..<count)
             if let items = bar.items, selectedIndex >= 0, selectedIndex < items.count { bar.selectedItem = items[selectedIndex] }
             result(nil)
             self.scheduleBadgeLayout()
+            self.scheduleLabelRefresh(resetBoundsTrigger: true)
           } else {
             result(FlutterError(code: "state_error", message: "Tab bars not initialized", details: nil))
           }
@@ -1076,6 +1258,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           self.currentSelectedIndex = selectedIndex
           self.isSplit = split; self.rightCountVal = rightCount; self.leftInsetVal = leftInset; self.rightInsetVal = rightInset
           self.scheduleBadgeLayout()
+          self.scheduleLabelRefresh(resetBoundsTrigger: true)
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing layout", details: nil)) }
       case "setSelectedIndex":
@@ -1162,104 +1345,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing value", details: nil)) }
       case "refresh":
-        // Force refresh for label rendering on iOS < 16
-        // UITabBar only fully layouts labels when items are selected
-        // So we need to temporarily select each item to force layout
-        if let bar = self.tabBar, let items = bar.items, !items.isEmpty {
-          let originalSelected = bar.selectedItem
-          // Temporarily remove delegate to prevent callbacks during refresh
-          bar.delegate = nil
-          DispatchQueue.main.async { [weak self, weak bar, weak originalSelected] in
-            guard let self = self, let bar = bar, let items = bar.items, !items.isEmpty else { return }
-            // Suppress the visible selection-pill morph that would otherwise
-            // animate through every tab as we cycle selection to force label layout.
-            UIView.setAnimationsEnabled(false)
-            var index = 0
-            func selectNext() {
-              guard index < items.count else {
-                // Restore original selection
-                if let original = originalSelected {
-                  bar.selectedItem = original
-                } else {
-                  bar.selectedItem = items.first
-                }
-                bar.setNeedsLayout()
-                bar.layoutIfNeeded()
-                // Restore delegate
-                bar.delegate = self
-                UIView.setAnimationsEnabled(true)
-                self.scheduleBadgeLayout()
-                return
-              }
-              bar.selectedItem = items[index]
-              bar.setNeedsLayout()
-              bar.layoutIfNeeded()
-              index += 1
-              DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                selectNext()
-              }
-            }
-            selectNext()
-          }
-        } else if let left = self.tabBarLeft, let right = self.tabBarRight {
-          let leftOriginal = left.selectedItem
-          let rightOriginal = right.selectedItem
-          // Temporarily remove delegates to prevent callbacks during refresh
-          left.delegate = nil
-          right.delegate = nil
-          DispatchQueue.main.async { [weak self, weak left, weak right, weak leftOriginal, weak rightOriginal] in
-            guard let self = self, let left = left, let right = right,
-                  let leftItems = left.items, let rightItems = right.items else { return }
-
-            // Suppress the visible selection-pill morph during the refresh cycle.
-            UIView.setAnimationsEnabled(false)
-
-            // Process left items
-            var leftIndex = 0
-            func selectNextLeft() {
-              if leftIndex < leftItems.count {
-                left.selectedItem = leftItems[leftIndex]
-                left.setNeedsLayout()
-                left.layoutIfNeeded()
-                leftIndex += 1
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                  selectNextLeft()
-                }
-              } else {
-                // Restore original selection (nil means no selection on this bar)
-                left.selectedItem = leftOriginal
-                left.setNeedsLayout()
-                left.layoutIfNeeded()
-
-                // Process right items
-                var rightIndex = 0
-                func selectNextRight() {
-                  if rightIndex < rightItems.count {
-                    right.selectedItem = rightItems[rightIndex]
-                    right.setNeedsLayout()
-                    right.layoutIfNeeded()
-                    rightIndex += 1
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                      selectNextRight()
-                    }
-                  } else {
-                    // Restore original selection (nil means no selection on this bar)
-                    right.selectedItem = rightOriginal
-                    right.setNeedsLayout()
-                    right.layoutIfNeeded()
-                    // Restore delegates
-                    left.delegate = self
-                    right.delegate = self
-                    UIView.setAnimationsEnabled(true)
-                    self.scheduleBadgeLayout()
-                  }
-                }
-                selectNextRight()
-              }
-            }
-            selectNextLeft()
-          }
-        }
+        self.scheduleLabelRefresh()
         result(nil)
       case "setLabelStyle":
         self.labelStyleDict = call.arguments as? [String: Any]
@@ -1343,4 +1429,3 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   }
 
 }
-

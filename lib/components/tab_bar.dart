@@ -616,25 +616,6 @@ class _CNTabBarState extends State<CNTabBar> {
     _lastSplitRightAsButton = widget.splitRightAsButton;
     _lastLabelStyle = encodeTextStyle(widget.labelStyle, context);
     _lastActiveLabelStyle = encodeTextStyle(widget.activeLabelStyle, context);
-
-    // Force refresh for label rendering on iOS < 16
-    // Wait for next frame to ensure view is fully initialized
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      Future.delayed(const Duration(milliseconds: 50), () async {
-        if (mounted && _channel != null) {
-          try {
-            await _channel?.invokeMethod('refresh');
-            // Ensure correct selection after refresh (refresh can reset selection state)
-            await _channel?.invokeMethod('setSelectedIndex', {
-              'index': widget.currentIndex,
-            });
-          } catch (e) {
-            // Ignore MissingPluginException during hot reload or view recreation
-            // This is expected when the platform view is being recreated
-          }
-        }
-      });
-    }
   }
 
   Future<dynamic> _onMethodCall(MethodCall call) async {
@@ -860,20 +841,6 @@ class _CNTabBarState extends State<CNTabBar> {
         _lastSplitSpacing = widget.splitSpacing;
         _lastSplitRightAsButton = widget.splitRightAsButton;
         _requestIntrinsicSize();
-        // setLayout recreates the tab bars — trigger refresh to force label
-        // rendering (same cycle-through-items trick used after initial creation).
-        if (defaultTargetPlatform == TargetPlatform.iOS) {
-          Future.delayed(const Duration(milliseconds: 50), () async {
-            if (mounted && _channel != null) {
-              try {
-                await _channel?.invokeMethod('refresh');
-                await _channel?.invokeMethod('setSelectedIndex', {
-                  'index': widget.currentIndex,
-                });
-              } catch (_) {}
-            }
-          });
-        }
       }
 
       // Behavioral update only — no tab bar recreation needed
