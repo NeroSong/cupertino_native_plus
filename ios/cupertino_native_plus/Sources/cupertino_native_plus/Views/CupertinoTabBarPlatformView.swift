@@ -1383,11 +1383,13 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     }
     // Single bar case
     if let single = self.tabBar, single === tabBar, let items = single.items, let idx = items.firstIndex(of: item) {
+      currentSelectedIndex = idx
       channel.invokeMethod("valueChanged", arguments: ["index": idx])
       return
     }
     // Split left
     if let left = tabBarLeft, left === tabBar, let items = left.items, let idx = items.firstIndex(of: item) {
+      currentSelectedIndex = idx
       tabBarRight?.selectedItem = nil
       channel.invokeMethod("valueChanged", arguments: ["index": idx])
       return
@@ -1411,6 +1413,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
         }
         return
       } else {
+        currentSelectedIndex = leftItems.count + idx
         tabBarLeft?.selectedItem = nil
         channel.invokeMethod("valueChanged", arguments: ["index": leftItems.count + idx])
       }
