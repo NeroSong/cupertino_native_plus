@@ -373,7 +373,9 @@ class _CNTabBarState extends State<CNTabBar> {
         if (!snapshot.hasData || snapshot.data == null) {
           return SizedBox(height: widget.height ?? 50, width: double.infinity);
         }
-        return _buildNativeTabBarPlatformView(context, snapshot.data!);
+        final creationParams = Map<String, dynamic>.from(snapshot.data!);
+        creationParams['selectedIndex'] = widget.currentIndex;
+        return _buildNativeTabBarPlatformView(context, creationParams);
       },
     );
   }
@@ -616,6 +618,9 @@ class _CNTabBarState extends State<CNTabBar> {
     _lastSplitRightAsButton = widget.splitRightAsButton;
     _lastLabelStyle = encodeTextStyle(widget.labelStyle, context);
     _lastActiveLabelStyle = encodeTextStyle(widget.activeLabelStyle, context);
+    ch
+        .invokeMethod('setSelectedIndex', {'index': widget.currentIndex})
+        .catchError((_) {});
   }
 
   Future<dynamic> _onMethodCall(MethodCall call) async {
